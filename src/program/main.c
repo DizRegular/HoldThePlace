@@ -93,8 +93,8 @@ void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accum_x
         coordPtr = strtok(NULL, ",");
     }
     //calibrated gyro readings
-    double sensitivityFactor = 0.02;
-    double calibrated_gx = raw_gx+162;
+    double sensitivityFactor = 0.08;
+    double calibrated_gx = (raw_gx+162)*-1;
     double calibrated_gy = raw_gy+234;
     double calibrated_gz = raw_gz+421;
     *gx = (calibrated_gx >= 5 && calibrated_gx <= 20) ? 0 : calibrated_gx;
