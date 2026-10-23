@@ -5,18 +5,22 @@
 #include <string.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <unistd.h>
-
+#include <time.h>
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
 int rayInit();
 int mqttInit();
-void process(double *accum_x, double *accum_y);
+void process(double *accumX, double *accumY);
 
 double gx, gy, gz;
 char txtGX[10] = "NaN", txtGY[10] = "NaN", txtGZ[10] = "NaN";
-double accum_x, accum_y;
+double accumX = 0, accumY = 0;
+char txtAccumX[11] = "NaN", txtAccumY[11] = "NaN";
 char payloadMessage[256] = "Waiting...";
+long lastMessageTime = 0;
+double latencyMS = 0;
+char txtPing[20] = "0";
 struct mosquitto *mosqClient = NULL;
 int main(void)
 {
@@ -34,7 +38,7 @@ int main(void)
     {
         //Logic
         // ----------------------------------------------------------------------------------
-        process(&accum_x, &accum_y);
+        process(&accumX, &accumY);
         // Draw
         // ----------------------------------------------------------------------------------
         BeginDrawing();
@@ -43,6 +47,10 @@ int main(void)
             DrawText(txtGX, 10, 0, 20, RED);
             DrawText(txtGY, 10, 20, 20, GREEN);
             DrawText(txtGZ, 10, 40, 20, BLUE);
+
+            DrawText(txtAccumX, 10, 80, 20, ORANGE);
+            DrawText(txtAccumY, 10, 100, 20, PURPLE);
+            DrawText(txtPing, 10, 120, 20, GREEN);
         EndDrawing();
         //----------------------------------------------------------------------------------
     }
@@ -79,7 +87,7 @@ void on_connect(struct mosquitto *mosq, void *obj, int reason_code) {
     }
 }
 
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accum_x, double *accum_y){
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY){
     char *coordPtr = strtok(coord, ",");
     int raw_gx, raw_gy, raw_gz;
     for (int i=0; i<3; i++){
@@ -93,17 +101,35 @@ void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accum_x
         coordPtr = strtok(NULL, ",");
     }
     //calibrated gyro readings
-    double sensitivityFactor = 0.08;
-    double calibrated_gx = (raw_gx+162)*-1;
-    double calibrated_gy = raw_gy+234;
-    double calibrated_gz = raw_gz+421;
-    *gx = (calibrated_gx >= 5 && calibrated_gx <= 20) ? 0 : calibrated_gx;
-    *gy = (calibrated_gy >= 5 && calibrated_gy <= 20) ? 0 : calibrated_gy;
-    *gz = (calibrated_gz >= 5 && calibrated_gz <= 20) ? 0 : calibrated_gz;
-    int pDelta_x = (int)(*gx * sensitivityFactor);
-    int pDelta_y = (int)(*gy * sensitivityFactor);
-    *accum_x += pDelta_x;
-    *accum_y += pDelta_y;
+    double sensitivityFactor = 0.001;
+    double calibrated_gx = (raw_gx+172);
+    double calibrated_gy = (raw_gy+233);
+    double calibrated_gz = (raw_gz+416);
+    if (fabs(calibrated_gx) <= 10) {
+        *gx = 0;
+    } else if (calibrated_gx > 0) {
+        *gx = calibrated_gx - 10;
+    } else {
+        *gx = calibrated_gx + 10;
+    }
+    if (fabs(calibrated_gy) <= 10){
+        *gy = 0;
+    }else if (calibrated_gy > 0) {
+        *gy = calibrated_gy - 10;
+    } else {
+        *gy = calibrated_gy + 10;
+    }
+    if (fabs(calibrated_gz) <= 10 ){
+        *gz = 0;
+    } else if (calibrated_gz > 0) {
+        *gz = calibrated_gz - 10;
+    } else  {
+        *gz = calibrated_gz + 10;
+    }
+    double pDelta_x = -(*gx * sensitivityFactor*10 );
+    double pDelta_y = -(*gz * sensitivityFactor*10 );
+    *accumX += pDelta_y;
+    *accumY += pDelta_x;
     double axis;
     char *txt;
     for (int i=0; i<3 ;i++){
@@ -111,11 +137,12 @@ void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accum_x
         else if (i==1){axis = *gy; txt = txtGY;}
         else if (i==2){axis = *gz; txt = txtGZ;}
 
-        int length = snprintf(NULL, 0, "%lf", axis);
+        int length = snprintf(NULL, 0, "%.2lf", axis);
         // Allocate memory (+1 for the null terminator '\0')
-        snprintf(txt, length + 1, "%lf", axis);
+        snprintf(txt, length + 1, "%.2lf", axis);
     }
-     
+    snprintf(txtAccumX, 11, "%.2lf", *accumX);
+    snprintf(txtAccumY, 11, "%.2lf", *accumY);
 }
 
 /* Callback called when a message is received from a subscribed topic. */
@@ -125,7 +152,12 @@ void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_messag
     int payloadsize = message->payloadlen < sizeof(payloadMessage) ? message->payloadlen : sizeof(payloadMessage);
     memcpy(&payloadMessage, (char *)message->payload, payloadsize);
     payloadMessage[payloadsize] = '\0';
-    gyroParser(payloadMessage, &gx, &gy, &gz, &accum_x, &accum_y);
+    gyroParser(payloadMessage, &gx, &gy, &gz, &accumX, &accumY);
+    
+    double receivedTime = GetTime();
+    latencyMS = (receivedTime - lastMessageTime)*1000;
+    lastMessageTime = receivedTime;
+    snprintf(txtPing, 20, "%.2lf", latencyMS);
 }
 
 int mqttInit() {
@@ -158,11 +190,11 @@ int mqttInit() {
 
 }
 
-void process(double *accum_x, double *accum_y){
+void process(double *accumX, double *accumY){
     CGEventRef event = CGEventCreate(NULL);
     CGPoint cursor_pos = CGEventGetLocation(event);
 
-    CGWarpMouseCursorPosition(CGPointMake(cursor_pos.x+(int)*accum_x, cursor_pos.y+(int)*accum_y));
-    *accum_x -= (int)*accum_x;
-    *accum_y -= (int)*accum_x;
+    CGWarpMouseCursorPosition(CGPointMake(cursor_pos.x+(int)*accumX, cursor_pos.y+(int)*accumY));
+    *accumX -= (int)*accumX;
+    *accumY -= (int)*accumY;
 }

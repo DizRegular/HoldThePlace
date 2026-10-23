@@ -13,14 +13,14 @@ const char MQTT_CLIENT_ID[] = "arduino-uno-r4-client";
 const char MQTT_USERNAME[] = "";             
 const char MQTT_PASSWORD[] = "";            
 
-const char PUBLISH_TOPIC[] = "arduino-uno-r4/keypad";       
+const char PUBLISH_TOPIC[] = "aabbccdd";       
 const char SUBSCRIBE_TOPIC[] = "aabbcc";  
 
 WiFiClient network;
 MQTTClient mqtt = MQTTClient(256);
 
 unsigned long lastPublishTime = 0;
-const int PUBLISH_INTERVAL = 10; 
+const int PUBLISH_INTERVAL = 100; 
 
 void setup()
 {

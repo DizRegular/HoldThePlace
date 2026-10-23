@@ -21,7 +21,7 @@ const char MQTT_PASSWORD[] = "";              // CHANGE IT IF REQUIRED, empty if
 const char PUBLISH_TOPIC[] = "HoldThePlaceIotDevice";       // CHANGE IT AS YOU DESIRE
 const char SUBSCRIBE_TOPIC[] = "HoldThePlaceClient";  // CHANGE IT AS YOU DESIRE
 
-const int PUBLISH_INTERVAL = 0.1;  // 5 seconds
+const int PUBLISH_INTERVAL = 5;  // 5 seconds
 
 WiFiClient network;
 MQTTClient mqtt = MQTTClient(256);
@@ -38,22 +38,25 @@ void setup() {
         Fastwire::setup(400, true);
   #endif
   Serial.begin(9600);
-
-  int status = WL_IDLE_STATUS;
-  while (status != WL_CONNECTED) {
-    Serial.print("Arduino UNO R4 - Attempting to connect to SSID: ");
-    Serial.println(WIFI_SSID);
-    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-    status = WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    // wait 10 seconds for connection:
-    delay(10000);
-  }
   // print your board's IP address:
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
   gyro.initialize();
+  gyro.setDLPFMode(MPU6050_DLPF_BW_20); // or MPU6050_DLPF_BW_20
   connectToMQTT();
+  Serial.println("Start collecting data");
+  long gxN = 0, gyN = 0, gzN = 0;
+  for (int i=0; i<1000; i++){
+    gyro.getRotation(&gx, &gy, &gz);
+    gxN += gx;
+    gyN += gy;
+    gzN += gz;
+    delay(2);
+  }
+  gxN /= 1000; gyN /= 1000; gzN /= 1000;
+  String val_str = String(gxN) + "," + String(gyN) + "," + String(gzN);
+  char messageBuffer[21];
+  val_str.toCharArray(messageBuffer, 21);
+  Serial.println(messageBuffer);
+  Serial.println("End collecting data");
 }
 
 void loop() {
@@ -70,6 +73,19 @@ void loop() {
 
 void connectToMQTT() {
   // Connect to the MQTT broker
+  int status = WL_IDLE_STATUS;
+  while (status != WL_CONNECTED) {
+    Serial.print("Arduino UNO R4 - Attempting to connect to SSID: ");
+    Serial.println(WIFI_SSID);
+    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+    status = WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    // wait 10 seconds for connection:
+    delay(2000);
+  }
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
   mqtt.begin(MQTT_BROKER_ADRRESS, MQTT_PORT, network);
 
   // Create a handler for incoming messages
@@ -92,6 +108,16 @@ void connectToMQTT() {
   while (!mqtt.subscribe(SUBSCRIBE_TOPIC)) {
     Serial.print("Arduino UNO R4 - Failed to subscribe to the topic: ");
     Serial.println(SUBSCRIBE_TOPIC);
+    int status = WL_IDLE_STATUS;
+    while (status != WL_CONNECTED) {
+      Serial.print("Arduino UNO R4 - Attempting to connect to SSID: ");
+      Serial.println(WIFI_SSID);
+      // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+      status = WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+      // wait 10 seconds for connection:
+      delay(2000);
+    }
     delay(1000);
   }
   Serial.print("Arduino UNO R4 - Subscribed to the topic: ");
@@ -112,7 +138,7 @@ void sendToMQTT() {
   val_str.toCharArray(messageBuffer, 21);
   mqtt.publish(PUBLISH_TOPIC, messageBuffer);
   
-  Serial.println("/");
+  Serial.println(messageBuffer);
 }
 
 void messageReceived(String &topic, String &payload) {
