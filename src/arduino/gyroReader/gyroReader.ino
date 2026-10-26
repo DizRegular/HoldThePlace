@@ -1,12 +1,9 @@
 #include <WiFiS3.h>
 #include <Wire.h>
 #include <MPU6050.h>
-
-const char WIFI_SSID[]     = "vivoY29";
-const char WIFI_PASSWORD[] = "WtfBro555";
+#include <EEPROM.h>
 
 // Where to send sensor data (your PC / server running a UDP listener)
-const char   REMOTE_HOST[]  = "10.90.143.49";  // IP or hostname of receiver
 const uint16_t REMOTE_PORT  = 8080;
 // Port the Arduino listens on for incoming commands
 const uint16_t LOCAL_PORT   = 4211;
@@ -20,17 +17,19 @@ int16_t gx, gy, gz;
 long gxOff = 0, gyOff = 0, gzOff = 0;
 unsigned long lastPublishTime = 0;
 
-void connectToWiFi() {
-  int status = WL_IDLE_STATUS;
-  while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(WIFI_SSID);
-    status = WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    delay(2000);
-  }
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-}
+struct NetworkConfig {
+  char magic[4];   // e.g. "CFG" - tells us if valid data was ever saved
+  char ssid[33];
+  char pass[65];
+  char ip[16];
+};
+
+NetworkConfig netConfig;
+bool configLoaded = false;
+
+// Non-blocking serial state
+char rxBuffer[128];
+size_t rxIndex = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -39,7 +38,8 @@ void setup() {
   gyro.initialize();
   gyro.setDLPFMode(MPU6050_DLPF_BW_20);
 
-  connectToWiFi();
+  loadConfigFromEEPROM();
+  handleWiFiConnection();
   udp.begin(LOCAL_PORT);
 
   // Gyro calibration (average of 1000 samples)
@@ -58,16 +58,23 @@ void setup() {
 }
 
 void loop() {
+  readUSBNonBlocking();
+
   if (WiFi.status() != WL_CONNECTED) {
-    connectToWiFi();
-    udp.begin(LOCAL_PORT);
+    handleWiFiConnection();
+    if (WiFi.status() == WL_CONNECTED) {
+      udp.begin(LOCAL_PORT);
+    }
   }
 
-  receiveUDP();
+  // Only attempt UDP if we have a valid configuration and active Wi-Fi
+  if (configLoaded && WiFi.status() == WL_CONNECTED) {
+    receiveUDP();
 
-  if (millis() - lastPublishTime >= PUBLISH_INTERVAL) {
-    sendUDP();
-    lastPublishTime = millis();
+    if (millis() - lastPublishTime >= PUBLISH_INTERVAL) {
+      sendUDP();
+      lastPublishTime = millis();
+    }
   }
 }
 
@@ -79,7 +86,7 @@ void sendUDP() {
   snprintf(msg, sizeof(msg), "%d,%d,%d",
            (int)(gx - gxOff), (int)(gy - gyOff), (int)(gz - gzOff));
 
-  udp.beginPacket(REMOTE_HOST, REMOTE_PORT);
+  udp.beginPacket(netConfig.ip, REMOTE_PORT);
   udp.print(msg);
   udp.endPacket();
 
@@ -103,4 +110,96 @@ void receiveUDP() {
   Serial.println(buf);
 
   analogWrite(6, atoi(buf));
+}
+
+void handleWiFiConnection() {
+  if (!configLoaded) return; // Do not attempt until credentials exist
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.print(F("Connecting to "));
+    Serial.println(netConfig.ssid);
+    WiFi.begin(netConfig.ssid, netConfig.pass);
+    
+    // Non-blocking timeout or simple check
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 4000) {
+      delay(200);
+      Serial.print(F("."));
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println(F("\nConnected!"));
+      Serial.print(F("Device IP: "));
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println(F("\nConnection failed. Retrying later..."));
+    }
+  }
+}
+
+void loadConfigFromEEPROM() {
+  EEPROM.get(0, netConfig);
+  if (strncmp(netConfig.magic, "CFG", 3) == 0) {
+    configLoaded = true;
+    Serial.println(F("[EEPROM] Valid configuration loaded."));
+    Serial.print(F("SSID: ")); Serial.println(netConfig.ssid);
+    Serial.print(F("IP: "));   Serial.println(netConfig.ip);
+  } else {
+    configLoaded = false;
+    Serial.println(F("[EEPROM] No credentials saved."));
+    Serial.println(F("Send via Serial: SSID;PASSWORD;TARGET_IP<Enter>"));
+  }
+}
+
+void saveConfigToEEPROM(const char* ssid, const char* pass, const char* ip) {
+  strncpy(netConfig.magic, "CFG", sizeof(netConfig.magic));
+  strncpy(netConfig.ssid, ssid, sizeof(netConfig.ssid) - 1);
+  netConfig.ssid[sizeof(netConfig.ssid) - 1] = '\0';
+
+  strncpy(netConfig.pass, pass, sizeof(netConfig.pass) - 1);
+  netConfig.pass[sizeof(netConfig.pass) - 1] = '\0';
+
+  strncpy(netConfig.ip, ip, sizeof(netConfig.ip) - 1);
+  netConfig.ip[sizeof(netConfig.ip) - 1] = '\0';
+
+  EEPROM.put(0, netConfig);
+  configLoaded = true;
+  Serial.println(F("[EEPROM] Credentials saved successfully."));
+}
+
+void parseSerialInput(char* input) {
+  // Expected format: SSID;PASSWORD;TARGET_IP
+  char* ssid = strtok(input, ";");
+  char* pass = strtok(NULL, ";");
+  char* ip   = strtok(NULL, ";");
+
+  if (ssid != NULL && pass != NULL && ip != NULL) {
+    saveConfigToEEPROM(ssid, pass, ip);
+    // Force a fresh Wi-Fi connection
+    WiFi.disconnect();
+  } else {
+    Serial.println(F("[ERROR] Format invalid. Use: SSID;PASSWORD;TARGET_IP"));
+  }
+}
+
+void readUSBNonBlocking() {
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+
+    if (c == '\r') {
+      continue; // Skip carriage returns
+    }
+
+    if (c == '\n') {
+      rxBuffer[rxIndex] = '\0';
+      if (rxIndex > 0) {
+        parseSerialInput(rxBuffer);
+      }
+      rxIndex = 0; // Reset buffer pointer
+    } else {
+      if (rxIndex < sizeof(rxBuffer) - 1) {
+        rxBuffer[rxIndex++] = c;
+      }
+    }
+  }
 }
