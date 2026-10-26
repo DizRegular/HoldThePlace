@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <time.h>
 
+
 #define UDP_PORT 8080
 #define BUFFER_SIZE 256
 
@@ -19,7 +20,7 @@
 //------------------------------------------------------------------------------------
 int rayInit();
 void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY);
-
+void DrawCustomSlider(Rectangle bounds, float *value, float minVal, float maxVal, const char *title);
 
 
 double gx, gy, gz;
@@ -31,6 +32,8 @@ char lastMessage[BUFFER_SIZE] = "Waiting for data...";
 long lastMessageTime = 0;
 double latencyMS = 0;
 
+float sensitivityFactor = 0.1f; 
+bool isDraggingSlider = false;
 int main(void)
 {
     // Initialization
@@ -73,6 +76,7 @@ int main(void)
 
             DrawText(TextFormat("%lf", accumX), 10, 80, 20, ORANGE);
             DrawText(TextFormat("%lf", accumY), 10, 100, 20, PURPLE);
+            DrawCustomSlider((Rectangle){ 150, 170, 300, 20 }, &sensitivityFactor, 0.01f, 1.0f, "Sensitivity");
         EndDrawing();
         //----------------------------------------------------------------------------------
     }
@@ -96,6 +100,37 @@ int rayInit() {
     return 1;
 }
 
+void DrawCustomSlider(Rectangle bounds, float *value, float minVal, float maxVal, const char *title) {
+    Vector2 mousePos = GetMousePosition();
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (CheckCollisionPointRec(mousePos, bounds)) {
+            isDraggingSlider = true;
+        }
+    }
+    
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        isDraggingSlider = false;
+    }
+
+    if (isDraggingSlider) {
+        float normalized = (mousePos.x - bounds.x) / bounds.width;
+        if (normalized < 0.0f) normalized = 0.0f;
+        if (normalized > 1.0f) normalized = 1.0f;
+        *value = minVal + normalized * (maxVal - minVal);
+    }
+
+    float progress = (*value - minVal) / (maxVal - minVal);
+    float handleX = bounds.x + progress * bounds.width;
+
+    DrawText(TextFormat("%s: %.3f", title, *value), (int)bounds.x, (int)bounds.y - 25, 20, DARKGRAY);
+    DrawRectangleRec(bounds, LIGHTGRAY);
+    DrawRectangle((int)bounds.x, (int)bounds.y, (int)(progress * bounds.width), (int)bounds.height, BLUE);
+    DrawRectangleLinesEx(bounds, 1, GRAY); 
+    
+    DrawCircle((int)handleX, (int)(bounds.y + bounds.height/2), bounds.height/1.2f, isDraggingSlider ? DARKBLUE : BLUE);
+}
+
 void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY){
     char *coordPtr = strtok(coord, ",");
     int calibrated_gx = 0, calibrated_gy= 0, calibrated_gz = 0;
@@ -110,7 +145,6 @@ void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX,
         coordPtr = strtok(NULL, ",");
     }
     //calibrated gyro readings
-    double sensitivityFactor = 0.1;
     if (fabs(calibrated_gx) <= NoiseTheshold) {
         *gx = 0;
     } else if (calibrated_gx > 0) {
