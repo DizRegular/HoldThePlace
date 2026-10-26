@@ -98,7 +98,7 @@ int rayInit() {
 
 void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY){
     char *coordPtr = strtok(coord, ",");
-    int calibrated_gx, calibrated_gy, calibrated_gz;
+    int calibrated_gx = 0, calibrated_gy= 0, calibrated_gz = 0;
     for (int i=0; i<3; i++){
         if (i==0){
            calibrated_gx = atof(coordPtr);
