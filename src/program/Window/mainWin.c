@@ -12,11 +12,15 @@
 
 #define UDP_PORT 8080
 #define BUFFER_SIZE 256
+
+#define NoiseTheshold 100
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
 int rayInit();
 void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY);
+
+
 
 double gx, gy, gz;
 
@@ -94,45 +98,46 @@ int rayInit() {
 
 void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY){
     char *coordPtr = strtok(coord, ",");
-    int raw_gx, raw_gy, raw_gz;
+    int calibrated_gx, calibrated_gy, calibrated_gz;
     for (int i=0; i<3; i++){
         if (i==0){
-           raw_gx = atof(coordPtr);
+           calibrated_gx = atof(coordPtr);
         } else if (i==1){
-            raw_gy = atof(coordPtr);
+            calibrated_gy = atof(coordPtr);
         } else {
-            raw_gz = atof(coordPtr);
+            calibrated_gz = atof(coordPtr);
         }
         coordPtr = strtok(NULL, ",");
     }
     //calibrated gyro readings
-    double sensitivityFactor = 0.001;
-    double calibrated_gx = (raw_gx+172);
-    double calibrated_gy = (raw_gy+233);
-    double calibrated_gz = (raw_gz+416);
-    if (fabs(calibrated_gx) <= 10) {
+    double sensitivityFactor = 0.1;
+    if (fabs(calibrated_gx) <= NoiseTheshold) {
         *gx = 0;
     } else if (calibrated_gx > 0) {
-        *gx = calibrated_gx - 10;
+        *gx = calibrated_gx - NoiseTheshold;
     } else {
-        *gx = calibrated_gx + 10;
+        *gx = calibrated_gx + NoiseTheshold;
     }
-    if (fabs(calibrated_gy) <= 10){
+    if (fabs(calibrated_gy) <= NoiseTheshold){
         *gy = 0;
     }else if (calibrated_gy > 0) {
-        *gy = calibrated_gy - 10;
+        *gy = calibrated_gy - NoiseTheshold;
     } else {
-        *gy = calibrated_gy + 10;
+        *gy = calibrated_gy + NoiseTheshold;
     }
-    if (fabs(calibrated_gz) <= 10 ){
+    if (fabs(calibrated_gz) <= NoiseTheshold ){
         *gz = 0;
     } else if (calibrated_gz > 0) {
-        *gz = calibrated_gz - 10;
+        *gz = calibrated_gz - NoiseTheshold;
     } else  {
-        *gz = calibrated_gz + 10;
+        *gz = calibrated_gz + NoiseTheshold;
     }
-    double pDelta_x = -(*gx * sensitivityFactor*10 );
-    double pDelta_y = -(*gz * sensitivityFactor*10 );
+    double deg_sec_x = *gx / 131.0;
+    double deg_sec_z = *gz / 131.0;
+
+    double pDelta_x = -(deg_sec_x * sensitivityFactor);
+    double pDelta_y = -(deg_sec_z * sensitivityFactor);
+
     *accumX += pDelta_y;
     *accumY += pDelta_x;
 }
