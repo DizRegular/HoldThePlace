@@ -11,5 +11,6 @@ int  net_receive(NetSocket sock, char *buffer, int max_len);
 void net_close(NetSocket sock);
 
 void mouse_move_relative(int dx, int dy);
+void mouse_left_click();
 
 #endif

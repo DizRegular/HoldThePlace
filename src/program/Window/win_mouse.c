@@ -55,3 +55,19 @@ void mouse_move_relative(int dx, int dy) {
         SetCursorPos(pt.x + dx, pt.y + dy);
     }
 }
+
+void mouse_left_click(){
+    INPUT inputs[2] = {0};
+
+    // --- Mouse Down Event ---
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+
+    // --- Mouse Up Event ---
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+
+    // 3. Send the input events to the operating system
+    // (Size of array, pointer to the array, size of the struct element)
+    SendInput(2, inputs, sizeof(INPUT));
+}

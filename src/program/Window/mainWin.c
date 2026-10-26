@@ -16,6 +16,9 @@
 //------------------------------------------------------------------------------------
 // Theme
 //------------------------------------------------------------------------------------
+
+int isClick = 0;
+
 #define COL_BG        (Color){ 244, 246, 250, 255 }
 #define COL_CARD      (Color){ 255, 255, 255, 255 }
 #define COL_BORDER    (Color){ 220, 224, 232, 255 }
@@ -30,8 +33,10 @@
 //------------------------------------------------------------------------------------
 // Declarations
 //------------------------------------------------------------------------------------
-int rayInit(void);
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY);
+int rayInit();
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY, int *isClick);
+
+int isClick = 0;
 void DrawCustomSlider(Rectangle bounds, float *value, float minVal, float maxVal);
 void DrawTextBox(Rectangle bounds, char *text, bool *isFocused, bool masked);
 void DrawCard(Rectangle r, const char *title);
@@ -80,16 +85,17 @@ int main(void)
     {
         // 1. UDP -> Gyro Mouse
         char buffer[256];
-        int n;
-        while ((n = net_receive(sock, buffer, sizeof(buffer) - 1)) > 0) {
-            buffer[n] = '\0';
-            gyroParser(buffer, &gx, &gy, &gz, &accumX, &accumY);
+        while (net_receive(sock, buffer, sizeof(buffer)) > 0) {
+            gyroParser(buffer, &gx, & gy, &gz, &accumX, &accumY, &isClick);
             int stepX = (int)accumX;
             int stepY = (int)accumY;
             if (stepX != 0 || stepY != 0) {
                 mouse_move_relative(stepX, stepY);
                 accumX -= stepX;
                 accumY -= stepY;
+            }
+            if (!isClick){
+                mouse_left_click();
             }
         }
 
@@ -283,18 +289,20 @@ void DrawCustomSlider(Rectangle bounds, float *value, float minVal, float maxVal
     DrawCircleLines((int)handleX, (int)(bounds.y + bounds.height / 2), 10, isDraggingSlider ? COL_ACCENT_HV : COL_ACCENT);
 }
 
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY){
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY, int *isClick){
     char *coordPtr = strtok(coord, ",");
-    double calibrated_gx = 0, calibrated_gy = 0, calibrated_gz = 0;
+    double calibrated_gx = 0, calibrated_gy = 0, calibrated_gz = 0, isClicked = 1;
 
     for (int i = 0; i < 3; i++){
         if (coordPtr == NULL) break;
         if (i == 0) calibrated_gx = atof(coordPtr);
         else if (i == 1) calibrated_gy = atof(coordPtr);
-        else calibrated_gz = atof(coordPtr);
+        else if (i == 2) calibrated_gz = atof(coordPtr);
+        else isClicked = atof(coordPtr);
         coordPtr = strtok(NULL, ",");
     }
-
+     *isClick = isClicked;
+  
     if (fabs(calibrated_gx) <= NoiseTheshold) *gx = 0;
     else if (calibrated_gx > 0) *gx = calibrated_gx - NoiseTheshold;
     else *gx = calibrated_gx + NoiseTheshold;
