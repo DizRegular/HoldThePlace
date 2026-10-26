@@ -35,6 +35,8 @@ void setup() {
   Serial.begin(9600);
   Wire.begin();
 
+  pinMode(8, INPUT_PULLUP);
+
   gyro.initialize();
   gyro.setDLPFMode(MPU6050_DLPF_BW_20);
 
@@ -83,8 +85,8 @@ void sendUDP() {
 
   // Remove the next three lines' "- off" if you want raw values like before
   char msg[48];
-  snprintf(msg, sizeof(msg), "%d,%d,%d",
-           (int)(gx - gxOff), (int)(gy - gyOff), (int)(gz - gzOff));
+  snprintf(msg, sizeof(msg), "%d,%d,%d,%d",
+           (int)(gx - gxOff), (int)(gy - gyOff), (int)(gz - gzOff), digitalRead(8));
 
   udp.beginPacket(netConfig.ip, REMOTE_PORT);
   udp.print(msg);
