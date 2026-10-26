@@ -18,9 +18,9 @@
 // Program main entry point
 //------------------------------------------------------------------------------------
 int rayInit();
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY);
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY, int *isClick);
 
-
+int isClick = 0;
 
 double gx, gy, gz;
 
@@ -52,13 +52,16 @@ int main(void)
         
         char buffer[256];
         while (net_receive(sock, buffer, sizeof(buffer)) > 0) {
-            gyroParser(buffer, &gx, & gy, &gz, &accumX, &accumY);
+            gyroParser(buffer, &gx, & gy, &gz, &accumX, &accumY, &isClick);
             int stepX = (int)accumX;
             int stepY = (int)accumY;
             if (stepX != 0 || stepY != 0) {
                 mouse_move_relative(stepX, stepY);
                 accumX -= stepX;
                 accumY -= stepY;
+            }
+            if (!isClick){
+                mouse_left_click();
             }
         }
         
@@ -96,19 +99,22 @@ int rayInit() {
     return 1;
 }
 
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY){
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY, int *isClick){
     char *coordPtr = strtok(coord, ",");
-    int calibrated_gx, calibrated_gy, calibrated_gz;
-    for (int i=0; i<3; i++){
+    int calibrated_gx, calibrated_gy, calibrated_gz, isClicked;
+    for (int i=0; i<4; i++){
         if (i==0){
            calibrated_gx = atof(coordPtr);
         } else if (i==1){
             calibrated_gy = atof(coordPtr);
-        } else {
+        } else if (i==2){
             calibrated_gz = atof(coordPtr);
+        } else {
+            isClicked = atof(coordPtr);
         }
         coordPtr = strtok(NULL, ",");
     }
+    *isClick = isClicked;
     //calibrated gyro readings
     double sensitivityFactor = 0.1;
     if (fabs(calibrated_gx) <= NoiseTheshold) {
