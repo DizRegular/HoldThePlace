@@ -23,6 +23,12 @@ body {
   flex-direction: column;
   gap: 15px; 
 }
+
+h3 {
+    font-size: 67px;
+    margin-bottom: -67px;
+}
+
 .img1 {
     width: 67%;
     margin-left: 105px;
@@ -140,4 +146,107 @@ body.dark-mode .toggle-btn {
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
   font-size: 25px;  
+}
+
+/* Components Section Container with Top & Bottom Border Lines */
+.components-section {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  padding: 30px 10px;
+  margin: 25px 0;
+  border-top: 1.5px solid #1a1a1a;
+  border-bottom: 1.5px solid #1a1a1a;
+  align-items: start;
+}
+
+/* Individual Card Layout */
+.component-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Title with Multi-Color Underline Accent */
+.component-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 8px 0;
+  position: relative;
+  display: inline-block;
+}
+
+.component-title::after {
+  content: '';
+  display: block;
+  width: 60%;
+  height: 3px;
+  margin: 4px auto 0 auto;
+  border-radius: 2px;
+  /* Multi-color gradient underline accent */
+  background: linear-gradient(to right, #00b4d8, #0077b6, #e63946, #ffb703, #52b788);
+}
+
+/* Description Text */
+.component-desc {
+  font-size: 13px !important; /* Scaled down description */
+  line-height: 1.4 !important;
+  color: #555555;
+  text-align: center !important;
+  margin: 0 0 15px 0;
+  padding: 0 5px;
+}
+
+/* Image Wrapper and Image */
+.component-img-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 130px;
+}
+
+.component-img {
+  max-width: 100%;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+}
+
+/* ============================
+   Dark Mode Styles
+   ============================ */
+body.dark-mode .components-section {
+  border-top-color: #e0e0e0;
+  border-bottom-color: #e0e0e0;
+}
+
+body.dark-mode .component-title {
+  color: #ffffff;
+}
+
+body.dark-mode .component-desc {
+  color: #b0b0b0;
+}
+
+/* ============================
+   Responsive Layout (Mobile)
+   ============================ */
+@media (max-width: 768px) {
+  .components-section {
+    grid-template-columns: 1fr; /* Stack vertically on small screens */
+    gap: 35px;
+    padding: 25px 0;
+  }
+}
+/* Dark Mode styling for the first div inside container (h3 and h2) */
+body.dark-mode .container > div:first-child h3 {
+  color: #ffffff;
+}
+
+body.dark-mode .container > div:first-child h2 {
+  color: #ffffff;
+  font-size: 24px;
 }
