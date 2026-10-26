@@ -3,7 +3,7 @@ setlocal
 
 :: --- Configuration ---
 set OUTPUT=airmouse.exe
-set SOURCES=../src/program/Window/mainWin.c ../src/program/Window/win_mouse.c
+set SOURCES=../src/program/Window/mainWin.c ../src/program/Window/win_mouse.c ../src/program/Window/serial_win.c ../src/program/Window/localip_win.c
 
 :: --- Compiler & Flags ---
 set CC=gcc
