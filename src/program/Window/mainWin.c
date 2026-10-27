@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 
 #include "win_mouse.h"
 #include "serial_win.h"
@@ -33,10 +34,8 @@ int isClick = 0;
 //------------------------------------------------------------------------------------
 // Declarations
 //------------------------------------------------------------------------------------
-int rayInit();
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY, int *isClick);
-
-int isClick = 0;
+int rayInit(void);
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double* accumX, double* accumY, int *isClick);
 void DrawCustomSlider(Rectangle bounds, float *value, float minVal, float maxVal);
 void DrawTextBox(Rectangle bounds, char *text, bool *isFocused, bool masked);
 void DrawCard(Rectangle r, const char *title);
@@ -60,12 +59,72 @@ char wifiPass[64] = "";
 char comPort[16] = "COM3";
 char hostIP[32] = "";
 
+int isClick = 0;
+int prevClick = -1;
+int idleClick = -1;          // button level when NOT pressed (learned from first packet)
+char lastRaw[64] = "";       // last raw UDP packet, for debugging
+unsigned long clickCount = 0;
 bool ssidFocused = false;
 bool passFocused = false;
 bool comFocused = false;
+bool ipFocused = false;
+char portList[96] = "";
+
+unsigned long packetCount = 0;
+double lastPacketTime = -1.0;
 
 char statusMessage[128] = "Ready to send credentials";
 Color statusColor = COL_MUTED;
+
+bool sendPending = false;
+
+// Turns the board's printed status lines into one short message for the status bar
+static void ShowSendResult(void) {
+    if (!SerialLastOk()) {
+        unsigned long err = SerialLastError();
+        const char *why =
+            (err == 2)  ? "port not found - check COM number" :
+            (err == 5)  ? "port busy - close Serial Monitor/other app" :
+            (err == 31) ? "device not working - check driver/cable" :
+            (err == 121)? "timeout - check cable/board" :
+                          "see error code";
+        snprintf(statusMessage, sizeof(statusMessage), "%s failed (err %lu): %s", comPort, err, why);
+        statusColor = COL_ERR;
+        return;
+    }
+
+    const char *r = SerialLastReply();
+    if (strstr(r, "ERROR")) {
+        snprintf(statusMessage, sizeof(statusMessage), "Board rejected the format (avoid ; in name/password)");
+        statusColor = COL_ERR;
+    } else if (strstr(r, "Connected!")) {
+        char ip[20] = "";
+        const char *p = strstr(r, "Device IP:");
+        if (p) {
+            p += 10;
+            while (*p == ' ') p++;
+            int i = 0;
+            while ((isdigit((unsigned char)*p) || *p == '.') && i < 15) ip[i++] = *p++;
+            ip[i] = '\0';
+        }
+        snprintf(statusMessage, sizeof(statusMessage), "Wi-Fi OK%s%s - sending UDP",
+                 ip[0] ? ", board IP " : "", ip);
+        statusColor = COL_OK;
+    } else if (strstr(r, "failed")) {
+        snprintf(statusMessage, sizeof(statusMessage), "Wi-Fi failed - check name/password (2.4 GHz only)");
+        statusColor = COL_ERR;
+    } else if (strstr(r, "saved")) {
+        snprintf(statusMessage, sizeof(statusMessage), "Saved on board - watch Packets for data");
+        statusColor = COL_MUTED;
+    } else if (r[0]) {
+        snprintf(statusMessage, sizeof(statusMessage), "Board says: %.40s", r);
+        statusColor = COL_MUTED;
+    } else {
+        snprintf(statusMessage, sizeof(statusMessage), "No reply from %s (read err %lu) - wrong COM port?",
+                 comPort, SerialLastReadError());
+        statusColor = COL_ERR;
+    }
+}
 
 int main(void)
 {
@@ -79,13 +138,22 @@ int main(void)
     // Auto-detect this PC's IP (no manual input needed)
     if (!GetLocalIP(hostIP, sizeof(hostIP))) hostIP[0] = '\0';
 
+    // Auto-detect the board's COM port
+    FindComPort(comPort, sizeof(comPort));
+    ListComPorts(portList, sizeof(portList));
+
     float backspaceTimer = 0.0f;
 
     while (!WindowShouldClose())
     {
         // 1. UDP -> Gyro Mouse
         char buffer[256];
-        while (net_receive(sock, buffer, sizeof(buffer)) > 0) {
+        int n;
+        while ((n = net_receive(sock, buffer, sizeof(buffer) - 1)) > 0) {
+            buffer[n] = '\0';
+            packetCount++;
+            lastPacketTime = GetTime();
+            snprintf(lastRaw, sizeof(lastRaw), "%s", buffer);   // keep a copy (gyroParser's strtok modifies buffer)
             gyroParser(buffer, &gx, & gy, &gz, &accumX, &accumY, &isClick);
             int stepX = (int)accumX;
             int stepY = (int)accumY;
@@ -94,9 +162,14 @@ int main(void)
                 accumX -= stepX;
                 accumY -= stepY;
             }
-            if (!isClick){
+            // Click once per press. The first packet defines the idle (not pressed) level,
+            // so this works for both active-low and active-high buttons.
+            if (idleClick < 0) idleClick = isClick;
+            if (prevClick == idleClick && isClick != idleClick) {
                 mouse_left_click();
+                clickCount++;
             }
+            prevClick = isClick;
         }
 
         // 2. Typing
@@ -106,6 +179,7 @@ int main(void)
                 if (ssidFocused)      AppendChar(wifiSSID, 63, key);
                 else if (passFocused) AppendChar(wifiPass, 63, key);
                 else if (comFocused)  AppendChar(comPort, 15, key);
+                else if (ipFocused)   AppendChar(hostIP, 31, key);
             }
             key = GetCharPressed();
         }
@@ -127,6 +201,7 @@ int main(void)
             if (ssidFocused && strlen(wifiSSID) > 0) wifiSSID[strlen(wifiSSID) - 1] = '\0';
             if (passFocused && strlen(wifiPass) > 0) wifiPass[strlen(wifiPass) - 1] = '\0';
             if (comFocused  && strlen(comPort)  > 0) comPort[strlen(comPort) - 1] = '\0';
+            if (ipFocused   && strlen(hostIP)   > 0) hostIP[strlen(hostIP) - 1] = '\0';
         }
 
         // 3. Render
@@ -141,11 +216,33 @@ int main(void)
             DrawCard((Rectangle){ 20, 60, 760, 130 }, "Gyro Mouse");
 
             UIText(TextFormat("GX: %7.2f      GY: %7.2f      GZ: %7.2f", gx, gy, gz), 40, 96, 18, COL_TEXT);
-            UIText(TextFormat("Accum X: %6.2f      Accum Y: %6.2f", accumX, accumY), 40, 120, 16, COL_MUTED);
+            UIText(TextFormat("Accum X: %6.2f   Accum Y: %6.2f   Btn: %d   Clicks: %lu", accumX, accumY, isClick, clickCount), 40, 120, 16, COL_MUTED);
 
+            UIText(TextFormat("Raw: %s", lastRaw[0] ? lastRaw : "(none)"), 40, 172, 14, COL_MUTED);
             UIText("Sensitivity", 40, 152, 18, COL_TEXT);
             DrawCustomSlider((Rectangle){ 160, 160, 300, 8 }, &sensitivityFactor, 0.01f, 1.0f);
             UIText(TextFormat("%.3f", sensitivityFactor), 490, 152, 18, COL_ACCENT);
+
+            // Packet status: tells you whether UDP data is reaching the PC
+            double since = (lastPacketTime < 0) ? -1.0 : GetTime() - lastPacketTime;
+            bool receiving = (since >= 0 && since < 2.0);
+            UIText(TextFormat("Packets: %lu", packetCount), 560, 96, 18, COL_TEXT);
+            UIText(receiving ? "Receiving data" : (packetCount ? "No data (stopped)" : "No data yet"),
+                   560, 120, 16, receiving ? COL_OK : COL_ERR);
+
+            Rectangle fwBtn = { 560, 146, 200, 32 };
+            bool fwHover = CheckCollisionPointRec(GetMousePosition(), fwBtn);
+            DrawRectangleRounded(fwBtn, 0.25f, 8, fwHover ? COL_ACCENT_HV : COL_ACCENT);
+            UIText("Open Firewall (UDP 8080)", fwBtn.x + 12, fwBtn.y + 6, 16, WHITE);
+            if (fwHover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                if (open_firewall_udp(8080)) {
+                    snprintf(statusMessage, sizeof(statusMessage), "Firewall request sent - accept the Windows prompt");
+                    statusColor = COL_OK;
+                } else {
+                    snprintf(statusMessage, sizeof(statusMessage), "Could not open firewall prompt");
+                    statusColor = COL_ERR;
+                }
+            }
 
             // ---- Card 2: Wi-Fi ----
             DrawCard((Rectangle){ 20, 206, 760, 270 }, "Send Wi-Fi Credentials via USB");
@@ -153,14 +250,46 @@ int main(void)
             UIText("COM Port",     40, 249, 18, COL_TEXT);
             UIText("Wi-Fi Name",   40, 294, 18, COL_TEXT);
             UIText("Password",     40, 339, 18, COL_TEXT);
-            UIText("PC IP (auto)", 40, 384, 18, COL_TEXT);
+            UIText("PC IP", 40, 384, 18, COL_TEXT);
 
             DrawTextBox((Rectangle){ 160, 242, 320, 34 }, comPort,  &comFocused,  false);
+            UIText(TextFormat("Ports: %s", portList[0] ? portList : "none"), 570, 251, 15, COL_MUTED);
+
+            // Auto-detect button
+            Rectangle autoBtn = { 490, 242, 70, 34 };
+            bool autoHover = CheckCollisionPointRec(GetMousePosition(), autoBtn);
+            DrawRectangleRounded(autoBtn, 0.25f, 8, autoHover ? COL_ACCENT_HV : COL_ACCENT);
+            UIText("Auto", autoBtn.x + 16, autoBtn.y + 7, 18, WHITE);
+            if (autoHover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                ListComPorts(portList, sizeof(portList));
+                if (FindComPort(comPort, sizeof(comPort))) {
+                    snprintf(statusMessage, sizeof(statusMessage), "Found %s", comPort);
+                    statusColor = COL_OK;
+                } else {
+                    snprintf(statusMessage, sizeof(statusMessage), "No COM port found - plug in the board");
+                    statusColor = COL_ERR;
+                }
+            }
             DrawTextBox((Rectangle){ 160, 287, 320, 34 }, wifiSSID, &ssidFocused, false);
             DrawTextBox((Rectangle){ 160, 332, 320, 34 }, wifiPass, &passFocused, true);
 
-            // PC IP is detected automatically (read-only)
-            UIText(hostIP[0] ? hostIP : "Not found", 170, 384, 18, hostIP[0] ? COL_OK : COL_ERR);
+            // PC IP: auto-detected, but editable (VPN / virtual adapters can fool auto-detect)
+            DrawTextBox((Rectangle){ 160, 377, 320, 34 }, hostIP, &ipFocused, false);
+
+            Rectangle ipBtn = { 490, 377, 70, 34 };
+            bool ipHover = CheckCollisionPointRec(GetMousePosition(), ipBtn);
+            DrawRectangleRounded(ipBtn, 0.25f, 8, ipHover ? COL_ACCENT_HV : COL_ACCENT);
+            UIText("Auto", ipBtn.x + 16, ipBtn.y + 7, 18, WHITE);
+            if (ipHover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                if (GetLocalIP(hostIP, sizeof(hostIP))) {
+                    snprintf(statusMessage, sizeof(statusMessage), "PC IP: %s (check it matches ipconfig Wi-Fi)", hostIP);
+                    statusColor = COL_OK;
+                } else {
+                    hostIP[0] = '\0';
+                    snprintf(statusMessage, sizeof(statusMessage), "IP not found - type it manually");
+                    statusColor = COL_ERR;
+                }
+            }
 
             Rectangle sendBtn = { 160, 425, 150, 36 };
             bool isHovered = CheckCollisionPointRec(GetMousePosition(), sendBtn);
@@ -168,20 +297,34 @@ int main(void)
             Vector2 tsz = MeasureTextEx(uiFont, "Send to USB", 18, 0.5f);
             UIText("Send to USB", sendBtn.x + (sendBtn.width - tsz.x) / 2, sendBtn.y + (sendBtn.height - tsz.y) / 2, 18, WHITE);
 
-            if (isHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                // Refresh IP right before sending (in case network changed)
-                GetLocalIP(hostIP, sizeof(hostIP));
+            if (isHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !SerialBusy()) {
+                // Only auto-fill the IP if the box is empty, so a manual IP is never overwritten
+                if (hostIP[0] == '\0') GetLocalIP(hostIP, sizeof(hostIP));
 
-                char payload[200];
-                snprintf(payload, sizeof(payload), "%s;%s;%s\n", wifiSSID, wifiPass, hostIP);
-
-                if (SendSerialData(comPort, payload)) {
-                    snprintf(statusMessage, sizeof(statusMessage), "Sent to %s successfully!", comPort);
-                    statusColor = COL_OK;
-                } else {
-                    snprintf(statusMessage, sizeof(statusMessage), "Failed to open %s", comPort);
+                if (wifiSSID[0] == '\0' || wifiPass[0] == '\0') {
+                    snprintf(statusMessage, sizeof(statusMessage), "Enter Wi-Fi name AND password (firmware needs both)");
                     statusColor = COL_ERR;
+                } else if (hostIP[0] == '\0') {
+                    snprintf(statusMessage, sizeof(statusMessage), "PC IP is empty - type it manually");
+                    statusColor = COL_ERR;
+                } else {
+                    char payload[200];
+                    snprintf(payload, sizeof(payload), "%s;%s;%s\n", wifiSSID, wifiPass, hostIP);
+                    if (SerialSendStart(comPort, payload)) {
+                        sendPending = true;
+                        snprintf(statusMessage, sizeof(statusMessage), "Sending to %s, waiting for board...", comPort);
+                        statusColor = COL_MUTED;
+                    } else {
+                        snprintf(statusMessage, sizeof(statusMessage), "Could not start sending");
+                        statusColor = COL_ERR;
+                    }
                 }
+            }
+
+            // Background send finished -> show the outcome
+            if (sendPending && !SerialBusy()) {
+                sendPending = false;
+                ShowSendResult();
             }
 
             UIText(statusMessage, 330, 434, 17, statusColor);
@@ -289,11 +432,11 @@ void DrawCustomSlider(Rectangle bounds, float *value, float minVal, float maxVal
     DrawCircleLines((int)handleX, (int)(bounds.y + bounds.height / 2), 10, isDraggingSlider ? COL_ACCENT_HV : COL_ACCENT);
 }
 
-void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double *accumY, int *isClick){
-    char *coordPtr = strtok(coord, ",");
+void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX, double* accumY, int* isClick){
+    char* coordPtr = strtok(coord, ",");
     double calibrated_gx = 0, calibrated_gy = 0, calibrated_gz = 0, isClicked = 1;
 
-    for (int i = 0; i < 3; i++){
+    for (int i = 0; i < 4; i++){
         if (coordPtr == NULL) break;
         if (i == 0) calibrated_gx = atof(coordPtr);
         else if (i == 1) calibrated_gy = atof(coordPtr);
@@ -301,8 +444,8 @@ void gyroParser(char* coord, double* gx, double* gy, double* gz, double *accumX,
         else isClicked = atof(coordPtr);
         coordPtr = strtok(NULL, ",");
     }
-     *isClick = isClicked;
-  
+     *isClick = (isClicked >= 0.5) ? 1 : 0;
+
     if (fabs(calibrated_gx) <= NoiseTheshold) *gx = 0;
     else if (calibrated_gx > 0) *gx = calibrated_gx - NoiseTheshold;
     else *gx = calibrated_gx + NoiseTheshold;
