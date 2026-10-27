@@ -1,0 +1,252 @@
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+
+body {
+  background-size: cover;
+  background-color: #e9ecef;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
+  font-family: 'Sarabun', sans-serif; 
+}
+
+.container {
+  background: white;
+  padding: 40px 60px;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  max-width: 800px;
+  width: 90%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 15px; 
+}
+
+h3 {
+    font-size: 67px;
+    margin-bottom: -67px;
+}
+
+.img1 {
+    width: 67%;
+    margin-left: 105px;
+}
+h1 {
+  color: #2c3e50;
+  margin-bottom: 5px;
+  margin-top: 20px;
+  border-bottom: 3px solid #000000;
+  padding-bottom: 10px;
+  font-size: 28px;
+}
+
+p {
+  font-size: 18px;
+  line-height: 1.6;
+  color: #555;
+  text-align: left;
+}
+
+.github-btn {
+  background-color: #24292e;
+  color: white;
+  text-decoration: none;
+  padding: 15px 32px;
+  border-radius: 7px;
+  font-size: 18px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 25px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.github-btn:hover {
+  background-color: #404448;
+  transform: translateY(-3px);
+}
+
+.youtube-btn {
+  background-color: #7a0000;
+  color: white;
+  text-decoration: none;
+  padding: 15px 32px;
+  border-radius: 7px;
+  font-size: 18px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 8px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.youtube-btn:hover {
+  background-color: #ff0000;
+  transform: translateY(-3px);
+}
+
+.poster-btn {
+  background-color: #075600;
+  color: white;
+  text-decoration: none;
+  padding: 15px 32px;
+  border-radius: 7px;
+  font-size: 18px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 8px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.poster-btn:hover {
+  background-color: #0ed100;
+  transform: translateY(-3px);
+}
+
+.toggle-container {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1000;
+  font-size: 25px;
+}
+.toggle-btn{
+    font-size: 25px;
+}
+body.dark-mode {
+  background-color: #121212;
+  font-size: 25px;
+}
+
+body.dark-mode .container {
+  background-color: #1e1e1e;
+  box-shadow: 0 8px 20px rgba(255, 255, 255, 0.05);
+  font-size: 25px;
+}
+
+body.dark-mode h1 {
+  color: #e0e0e0;
+  border-bottom: 3px solid #e0e0e0;
+}
+
+body.dark-mode p {
+  color: #b0b0b0;
+}
+
+body.dark-mode .toggle-text {
+  color: #e0e0e0;
+  font-size: 25px;
+}
+
+body.dark-mode .toggle-btn {
+  background-color: #000000;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+  font-size: 25px;  
+}
+
+/* Components Section Container with Top & Bottom Border Lines */
+.components-section {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  padding: 30px 10px;
+  margin: 25px 0;
+  border-top: 1.5px solid #1a1a1a;
+  border-bottom: 1.5px solid #1a1a1a;
+  align-items: start;
+}
+
+/* Individual Card Layout */
+.component-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Title with Multi-Color Underline Accent */
+.component-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 8px 0;
+  position: relative;
+  display: inline-block;
+}
+
+.component-title::after {
+  content: '';
+  display: block;
+  width: 60%;
+  height: 3px;
+  margin: 4px auto 0 auto;
+  border-radius: 2px;
+  /* Multi-color gradient underline accent */
+  background: linear-gradient(to right, #00b4d8, #0077b6, #e63946, #ffb703, #52b788);
+}
+
+/* Description Text */
+.component-desc {
+  font-size: 13px !important; /* Scaled down description */
+  line-height: 1.4 !important;
+  color: #555555;
+  text-align: center !important;
+  margin: 0 0 15px 0;
+  padding: 0 5px;
+}
+
+/* Image Wrapper and Image */
+.component-img-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 130px;
+}
+
+.component-img {
+  max-width: 100%;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+}
+
+/* ============================
+   Dark Mode Styles
+   ============================ */
+body.dark-mode .components-section {
+  border-top-color: #e0e0e0;
+  border-bottom-color: #e0e0e0;
+}
+
+body.dark-mode .component-title {
+  color: #ffffff;
+}
+
+body.dark-mode .component-desc {
+  color: #b0b0b0;
+}
+
+/* ============================
+   Responsive Layout (Mobile)
+   ============================ */
+@media (max-width: 768px) {
+  .components-section {
+    grid-template-columns: 1fr; /* Stack vertically on small screens */
+    gap: 35px;
+    padding: 25px 0;
+  }
+}
+/* Dark Mode styling for the first div inside container (h3 and h2) */
+body.dark-mode .container > div:first-child h3 {
+  color: #ffffff;
+}
+
+body.dark-mode .container > div:first-child h2 {
+  color: #ffffff;
+  font-size: 24px;
+}
