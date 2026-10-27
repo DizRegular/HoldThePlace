@@ -49,9 +49,48 @@ void net_close(NetSocket sock) {
     WSACleanup();
 }
 
+// Runs "netsh advfirewall ... add rule" elevated. shell32 is loaded at runtime
+// so no extra linker flag (-lshell32) is needed.
+bool open_firewall_udp(int port) {
+    typedef HINSTANCE (WINAPI *ShellExecuteAFn)(HWND, LPCSTR, LPCSTR, LPCSTR, LPCSTR, INT);
+    HMODULE shell = LoadLibraryA("shell32.dll");
+    if (!shell) return false;
+    ShellExecuteAFn pShellExecuteA = (ShellExecuteAFn)GetProcAddress(shell, "ShellExecuteA");
+    if (!pShellExecuteA) { FreeLibrary(shell); return false; }
+
+    char args[256];
+    snprintf(args, sizeof(args),
+             "advfirewall firewall add rule name=\"AirMouse UDP %d\" dir=in action=allow "
+             "protocol=UDP localport=%d profile=any",
+             port, port);
+
+    HINSTANCE r = pShellExecuteA(NULL, "runas", "netsh.exe", args, NULL, SW_HIDE);
+    FreeLibrary(shell);
+    return (INT_PTR)r > 32;
+}
+
 void mouse_move_relative(int dx, int dy) {
     POINT pt;
     if (GetCursorPos(&pt)) {
         SetCursorPos(pt.x + dx, pt.y + dy);
     }
+}
+
+void mouse_left_click(){
+    INPUT inputs[2] = {0};
+
+    // --- Mouse Down Event ---
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+
+    // --- Mouse Up Event ---
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+
+    // 3. Send the input events to the operating system
+    // (Size of array, pointer to the array, size of the struct element)
+    // Send down and up separately with a short gap; some apps ignore 0 ms clicks
+    SendInput(1, &inputs[0], sizeof(INPUT));
+    Sleep(15);
+    SendInput(1, &inputs[1], sizeof(INPUT));
 }
